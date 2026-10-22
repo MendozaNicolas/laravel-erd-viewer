@@ -158,6 +158,50 @@ html, body, #root {
   background-color: var(--bg-color) !important;
 }
 
+/* React Flow Controls */
+.react-flow__controls {
+  background-color: var(--card-bg) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: 6px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45) !important;
+}
+
+.react-flow__controls-button {
+  background-color: var(--card-bg) !important;
+  border: none !important;
+  border-bottom: 1px solid var(--card-border) !important;
+  color: var(--fg-color) !important;
+  fill: var(--fg-color) !important;
+  transition: background-color 0.15s ease, fill 0.15s ease;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+
+.react-flow__controls-button:hover {
+  background-color: var(--hover-bg) !important;
+}
+
+.react-flow__controls-button svg {
+  fill: var(--fg-color) !important;
+}
+
+.react-flow__controls-button:disabled svg {
+  fill: var(--muted) !important;
+  opacity: 0.4;
+}
+
+.react-flow__attribution {
+  background: rgba(20, 20, 20, 0.6) !important;
+  border-radius: 4px;
+}
+
+.react-flow__attribution a {
+  color: var(--muted) !important;
+}
+
 /* Table Node */
 .erd-table-node {
   width: 280px;
