@@ -32,7 +32,6 @@ const edgeTypes = {
 
 export const App: React.FC = () => {
   const [schema, setSchema] = useState<SchemaIR | null>(null);
-  const [savedLayout, setSavedLayout] = useState<SavedLayout | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -42,12 +41,21 @@ export const App: React.FC = () => {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const schemaRef = useRef<SchemaIR | null>(null);
+  const savedLayoutRef = useRef<SavedLayout | null>(null);
+  const hasFittedInitialViewRef = useRef<boolean>(false);
   const saveLayoutTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const vscode = useMemo(() => getVsCodeApi(), []);
 
-  // Handle open source jump
+  // Update schemaRef whenever schema state changes
+  useEffect(() => {
+    schemaRef.current = schema;
+  }, [schema]);
+
+  // Jump to migration source code
   const handleOpenSource = useCallback(
     (source: SourceRef) => {
       vscode.postMessage({ type: 'openSource', source });
@@ -55,80 +63,71 @@ export const App: React.FC = () => {
     [vscode]
   );
 
-  // Collect set of FK columns per table
-  const fkColumnsMap = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    if (!schema) return map;
-    for (const rel of schema.relations) {
-      if (!map.has(rel.from.table)) {
-        map.set(rel.from.table, new Set());
+  // Helper to compute neighbor tables of selected table
+  const getConnectedTables = useCallback(
+    (tableToFocus: string | null, currentSchema: SchemaIR | null): Set<string> | null => {
+      if (!tableToFocus || !currentSchema) return null;
+      const neighbors = new Set<string>([tableToFocus]);
+      for (const rel of currentSchema.relations) {
+        if (rel.from.table === tableToFocus && rel.to.table !== '*') {
+          neighbors.add(rel.to.table);
+        }
+        if (rel.to.table === tableToFocus) {
+          neighbors.add(rel.from.table);
+        }
       }
-      map.get(rel.from.table)!.add(rel.from.column);
-    }
-    return map;
-  }, [schema]);
+      return neighbors;
+    },
+    []
+  );
 
-  // Determine connected neighbors of selected table
-  const connectedTables = useMemo(() => {
-    if (!selectedTable || !schema) return null;
-    const neighbors = new Set<string>([selectedTable]);
-    for (const rel of schema.relations) {
-      if (rel.from.table === selectedTable && rel.to.table !== '*') {
-        neighbors.add(rel.to.table);
-      }
-      if (rel.to.table === selectedTable) {
-        neighbors.add(rel.from.table);
-      }
-    }
-    return neighbors;
-  }, [selectedTable, schema]);
-
-  // Recompute and apply layout
-  const applyLayout = useCallback(
-    async (currentSchema: SchemaIR, layoutToUse?: SavedLayout | null) => {
+  // Helper to build full nodes and edges with layout
+  const buildGraphAndLayout = useCallback(
+    async (
+      currentSchema: SchemaIR,
+      layoutToUse?: SavedLayout | null,
+      shouldFitView = false
+    ) => {
       if (currentSchema.tables.length === 0) {
         setNodes([]);
         setEdges([]);
         return;
       }
 
+      // Collect FK columns
+      const fkMap = new Map<string, Set<string>>();
+      for (const rel of currentSchema.relations) {
+        if (!fkMap.has(rel.from.table)) {
+          fkMap.set(rel.from.table, new Set());
+        }
+        fkMap.get(rel.from.table)!.add(rel.from.column);
+      }
+
+      // Compute positions with ELK
       const positions = await layoutSchema(
         currentSchema.tables,
         currentSchema.relations,
         layoutToUse?.nodes || null
       );
 
-      // Construct React Flow Nodes
-      const newNodes: Node[] = currentSchema.tables.map((table) => {
-        const isDimmed =
-          connectedTables !== null && !connectedTables.has(table.name);
-        const isHighlighted = selectedTable === table.name;
+      // Create React Flow nodes
+      const newNodes: Node[] = currentSchema.tables.map((table) => ({
+        id: table.name,
+        type: 'table',
+        position: positions[table.name] || { x: 0, y: 0 },
+        data: {
+          table,
+          isHighlighted: false,
+          isDimmed: false,
+          fkColumns: fkMap.get(table.name) || new Set(),
+          onOpenSource: handleOpenSource,
+        },
+      }));
 
-        return {
-          id: table.name,
-          type: 'table',
-          position: positions[table.name] || { x: 0, y: 0 },
-          data: {
-            table,
-            isHighlighted,
-            isDimmed,
-            fkColumns: fkColumnsMap.get(table.name) || new Set(),
-            onOpenSource: handleOpenSource,
-          },
-        };
-      });
-
-      // Construct React Flow Edges
+      // Create React Flow edges
       const newEdges: Edge[] = [];
       for (const rel of currentSchema.relations) {
-        if (rel.to.table === '*') continue; // Polymorphic handled in node badges
-        if (rel.kind === 'inferred' && !showInferred) continue;
-
-        const isEdgeConnected =
-          !selectedTable ||
-          rel.from.table === selectedTable ||
-          rel.to.table === selectedTable;
-        const isDimmed = selectedTable !== null && !isEdgeConnected;
+        if (rel.to.table === '*') continue;
 
         newEdges.push({
           id: rel.id,
@@ -138,6 +137,7 @@ export const App: React.FC = () => {
           targetHandle: `${rel.to.column}-target`,
           type: 'relation',
           animated: rel.kind === 'inferred',
+          hidden: rel.kind === 'inferred' && !showInferred,
           markerEnd: {
             type: MarkerType.ArrowClosed,
             width: 14,
@@ -149,8 +149,8 @@ export const App: React.FC = () => {
           },
           data: {
             relation: rel,
-            isHighlighted: selectedTable !== null && isEdgeConnected,
-            isDimmed,
+            isHighlighted: false,
+            isDimmed: false,
           },
         });
       }
@@ -158,28 +158,38 @@ export const App: React.FC = () => {
       setNodes(newNodes);
       setEdges(newEdges);
 
-      // Fit view if first load
-      setTimeout(() => {
-        rfInstanceRef.current?.fitView({ padding: 0.2 });
-      }, 50);
+      if (shouldFitView) {
+        setTimeout(() => {
+          rfInstanceRef.current?.fitView({ padding: 0.2 });
+        }, 80);
+      }
     },
-    [connectedTables, fkColumnsMap, handleOpenSource, selectedTable, setEdges, setNodes, showInferred]
+    [handleOpenSource, setEdges, setNodes, showInferred]
   );
 
-  // Listen to messages from extension host
+  // Main listener for messages from the extension host
+  // RUNS ONCE ON MOUNT - DOES NOT RE-SEND 'ready' ON STATE CHANGES!
   useEffect(() => {
     const handleMessage = async (event: MessageEvent<ToWebview>) => {
       const msg = event.data;
       if (!msg || !msg.type) return;
 
       switch (msg.type) {
-        case 'schema':
+        case 'schema': {
           setLoading(false);
           setErrorMessage(null);
           setSchema(msg.schema);
-          setSavedLayout(msg.layout);
-          await applyLayout(msg.schema, msg.layout);
+          savedLayoutRef.current = msg.layout;
+
+          const isFirstTime = !hasFittedInitialViewRef.current;
+          if (isFirstTime) {
+            hasFittedInitialViewRef.current = true;
+          }
+
+          // Build graph; fitView ONLY on the very first load
+          await buildGraphAndLayout(msg.schema, msg.layout, isFirstTime);
           break;
+        }
 
         case 'loading':
           setLoading(msg.value);
@@ -193,45 +203,90 @@ export const App: React.FC = () => {
     };
 
     window.addEventListener('message', handleMessage);
+
+    // Send ready once on initial mount
     vscode.postMessage({ type: 'ready' });
 
     return () => {
       window.removeEventListener('message', handleMessage);
     };
-  }, [applyLayout, vscode]);
+  }, [buildGraphAndLayout, vscode]);
 
-  // Update highlighting whenever selectedTable or showInferred changes
+  // Update highlighting without re-running ELK layout when selectedTable changes
   useEffect(() => {
-    if (schema) {
-      applyLayout(schema, savedLayout);
+    const currentSchema = schemaRef.current;
+    if (!currentSchema) return;
+
+    const connected = getConnectedTables(selectedTable, currentSchema);
+
+    // Update node highlights
+    setNodes((currentNodes) =>
+      currentNodes.map((n) => {
+        const isDimmed = connected !== null && !connected.has(n.id);
+        const isHighlighted = selectedTable === n.id;
+        if (n.data.isDimmed === isDimmed && n.data.isHighlighted === isHighlighted) {
+          return n;
+        }
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            isHighlighted,
+            isDimmed,
+          },
+        };
+      })
+    );
+
+    // Update edge highlights
+    setEdges((currentEdges) =>
+      currentEdges.map((e) => {
+        const rel = (e.data as any)?.relation;
+        const isEdgeConnected =
+          !selectedTable ||
+          rel?.from.table === selectedTable ||
+          rel?.to.table === selectedTable;
+        const isDimmed = selectedTable !== null && !isEdgeConnected;
+        const isHidden = rel?.kind === 'inferred' && !showInferred;
+
+        return {
+          ...e,
+          hidden: isHidden,
+          data: {
+            ...e.data,
+            isHighlighted: selectedTable !== null && isEdgeConnected,
+            isDimmed,
+          },
+        };
+      })
+    );
+  }, [selectedTable, showInferred, getConnectedTables, setEdges, setNodes]);
+
+  // Persist node position on drag stop (debounced, without reloading or fitView)
+  const onNodeDragStop = useCallback(() => {
+    if (saveLayoutTimerRef.current) {
+      clearTimeout(saveLayoutTimerRef.current);
     }
-  }, [selectedTable, showInferred, applyLayout, schema, savedLayout]);
 
-  // Persist node position on drag stop
-  const onNodeDragStop = useCallback(
-    () => {
-      if (saveLayoutTimerRef.current) {
-        clearTimeout(saveLayoutTimerRef.current);
-      }
-
-      saveLayoutTimerRef.current = setTimeout(() => {
-        setNodes((currentNodes) => {
-          const nodePositions: Record<string, { x: number; y: number }> = {};
-          for (const n of currentNodes) {
-            nodePositions[n.id] = { x: Math.round(n.position.x), y: Math.round(n.position.y) };
-          }
-          const newLayout: SavedLayout = {
-            version: 1,
-            nodes: nodePositions,
+    saveLayoutTimerRef.current = setTimeout(() => {
+      setNodes((currentNodes) => {
+        const nodePositions: Record<string, { x: number; y: number }> = {};
+        for (const n of currentNodes) {
+          nodePositions[n.id] = {
+            x: Math.round(n.position.x),
+            y: Math.round(n.position.y),
           };
-          setSavedLayout(newLayout);
-          vscode.postMessage({ type: 'saveLayout', layout: newLayout });
-          return currentNodes;
-        });
-      }, 400);
-    },
-    [setNodes, vscode]
-  );
+        }
+        const newLayout: SavedLayout = {
+          version: 1,
+          nodes: nodePositions,
+        };
+        savedLayoutRef.current = newLayout;
+        vscode.postMessage({ type: 'saveLayout', layout: newLayout });
+        return currentNodes;
+      });
+    }, 400);
+  }, [setNodes, vscode]);
 
   // Table selection
   const onNodeClick = useCallback((_: any, node: Node) => {
@@ -250,7 +305,8 @@ export const App: React.FC = () => {
       return;
     }
 
-    const match = schema?.tables.find((t) =>
+    const currentSchema = schemaRef.current;
+    const match = currentSchema?.tables.find((t) =>
       t.name.toLowerCase().includes(query.toLowerCase())
     );
     if (match) {
@@ -266,10 +322,11 @@ export const App: React.FC = () => {
     }
   };
 
-  // Auto arrange re-layout button
+  // Re-layout button (Auto arrange)
   const handleRelayout = () => {
-    if (schema) {
-      applyLayout(schema, null);
+    const currentSchema = schemaRef.current;
+    if (currentSchema) {
+      buildGraphAndLayout(currentSchema, null, true);
     }
   };
 
@@ -298,22 +355,22 @@ export const App: React.FC = () => {
         onOpenWarnings={() => setIsWarningsOpen(true)}
       />
 
-      {/* Loading or Error banner */}
-      {loading && (
+      {/* Loading banner (only on initial load before any schema is rendered) */}
+      {loading && !schema && (
         <div
           style={{
             position: 'absolute',
-            top: '64px',
+            top: '70px',
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 20,
-            padding: '4px 14px',
+            padding: '6px 16px',
             borderRadius: '9999px',
-            background: 'rgba(0, 127, 212, 0.2)',
+            background: 'rgba(0, 127, 212, 0.25)',
             color: 'var(--accent)',
-            fontSize: '0.8rem',
+            fontSize: '0.85rem',
             border: '1px solid var(--accent)',
-            backdropFilter: 'blur(4px)',
+            backdropFilter: 'blur(6px)',
           }}
         >
           Loading migrations...
@@ -324,17 +381,17 @@ export const App: React.FC = () => {
         <div
           style={{
             position: 'absolute',
-            top: '64px',
+            top: '70px',
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 20,
             padding: '6px 16px',
             borderRadius: '6px',
-            background: 'rgba(239, 68, 68, 0.2)',
+            background: 'rgba(239, 68, 68, 0.25)',
             color: '#ef4444',
             fontSize: '0.85rem',
             border: '1px solid #ef4444',
-            backdropFilter: 'blur(4px)',
+            backdropFilter: 'blur(6px)',
           }}
         >
           {errorMessage}
@@ -356,8 +413,7 @@ export const App: React.FC = () => {
           onInit={(instance) => {
             rfInstanceRef.current = instance;
           }}
-          fitView
-          minZoom={0.2}
+          minZoom={0.1}
           maxZoom={2.5}
         >
           <Background color="var(--card-border, #333333)" gap={24} size={1} />

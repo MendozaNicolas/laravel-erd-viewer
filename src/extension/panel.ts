@@ -23,10 +23,15 @@ export class ErdWebviewPanel {
       return;
     }
 
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    const workspaceRoot = workspaceFolders && workspaceFolders.length > 0
-      ? workspaceFolders[0].uri
-      : extensionUri;
+    let workspaceRoot = extensionUri;
+    if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+      if (vscode.window.activeTextEditor) {
+        const folder = vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri);
+        workspaceRoot = folder ? folder.uri : vscode.workspace.workspaceFolders[0].uri;
+      } else {
+        workspaceRoot = vscode.workspace.workspaceFolders[0].uri;
+      }
+    }
 
     const panel = vscode.window.createWebviewPanel(
       'laravelErd',
