@@ -81,7 +81,7 @@ export class ErdWebviewPanel {
     // Watch migrations in workspace
     const watcher = setupMigrationWatcher(this._workspaceRoot, () => {
       if (!this._isDisposed) {
-        this.refresh().catch(() => {});
+        this.refresh(true).catch(() => {});
       }
     });
     this._disposables.push(watcher);
@@ -96,9 +96,11 @@ export class ErdWebviewPanel {
     }
   }
 
-  public async refresh() {
+  public async refresh(quiet = false) {
     if (this._isDisposed) return;
-    this.postMessage({ type: 'loading', value: true });
+    if (!quiet) {
+      this.postMessage({ type: 'loading', value: true });
+    }
 
     try {
       const schema = await scanAndParseMigrations(this._workspaceRoot);

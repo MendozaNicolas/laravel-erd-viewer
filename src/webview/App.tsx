@@ -43,12 +43,18 @@ export const App: React.FC = () => {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const nodesRef = useRef<Node[]>([]);
   const schemaRef = useRef<SchemaIR | null>(null);
   const savedLayoutRef = useRef<SavedLayout | null>(null);
   const hasFittedInitialViewRef = useRef<boolean>(false);
   const saveLayoutTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const vscode = useMemo(() => getVsCodeApi(), []);
+
+  // Update nodesRef whenever nodes change
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
 
   // Update schemaRef whenever schema state changes
   useEffect(() => {
@@ -103,31 +109,56 @@ export const App: React.FC = () => {
         fkMap.get(rel.from.table)!.add(rel.from.column);
       }
 
-      // Compute positions with ELK
+      // Collect current node positions from canvas so user's manual placement is preserved
+      const currentCanvasPositions: Record<string, { x: number; y: number }> = {};
+      for (const n of nodesRef.current) {
+        currentCanvasPositions[n.id] = { x: n.position.x, y: n.position.y };
+      }
+
+      // Merge saved layout with currently active canvas positions
+      const layoutPositions = {
+        ...(layoutToUse?.nodes || {}),
+        ...currentCanvasPositions,
+      };
+
+      // Compute positions with ELK (preserves existing positions, only places newly added tables)
       const positions = await layoutSchema(
         currentSchema.tables,
         currentSchema.relations,
-        layoutToUse?.nodes || null
+        Object.keys(layoutPositions).length > 0 ? layoutPositions : null
       );
 
+      const connected = getConnectedTables(selectedTable, currentSchema);
+
       // Create React Flow nodes
-      const newNodes: Node[] = currentSchema.tables.map((table) => ({
-        id: table.name,
-        type: 'table',
-        position: positions[table.name] || { x: 0, y: 0 },
-        data: {
-          table,
-          isHighlighted: false,
-          isDimmed: false,
-          fkColumns: fkMap.get(table.name) || new Set(),
-          onOpenSource: handleOpenSource,
-        },
-      }));
+      const newNodes: Node[] = currentSchema.tables.map((table) => {
+        const isDimmed = connected !== null && !connected.has(table.name);
+        const isHighlighted = selectedTable === table.name;
+
+        return {
+          id: table.name,
+          type: 'table',
+          position: positions[table.name] || { x: 0, y: 0 },
+          data: {
+            table,
+            isHighlighted,
+            isDimmed,
+            fkColumns: fkMap.get(table.name) || new Set(),
+            onOpenSource: handleOpenSource,
+          },
+        };
+      });
 
       // Create React Flow edges
       const newEdges: Edge[] = [];
       for (const rel of currentSchema.relations) {
         if (rel.to.table === '*') continue;
+
+        const isEdgeConnected =
+          !selectedTable ||
+          rel.from.table === selectedTable ||
+          rel.to.table === selectedTable;
+        const isDimmed = selectedTable !== null && !isEdgeConnected;
 
         newEdges.push({
           id: rel.id,
@@ -149,8 +180,8 @@ export const App: React.FC = () => {
           },
           data: {
             relation: rel,
-            isHighlighted: false,
-            isDimmed: false,
+            isHighlighted: selectedTable !== null && isEdgeConnected,
+            isDimmed,
           },
         });
       }
@@ -164,7 +195,7 @@ export const App: React.FC = () => {
         }, 80);
       }
     },
-    [handleOpenSource, setEdges, setNodes, showInferred]
+    [getConnectedTables, handleOpenSource, selectedTable, setEdges, setNodes, showInferred]
   );
 
   // Main listener for messages from the extension host
