@@ -49,7 +49,7 @@ export const TableNode = memo(({ data }: NodeProps<TableCustomNode>) => {
       <div
         className="erd-table-header"
         onDoubleClick={handleHeaderDoubleClick}
-        title={`Table: ${table.name}\nSource: ${table.source.file}:${table.source.line}\n(Double-click to open code)`}
+        title={`Table: ${table.name}`}
       >
         <div className="erd-table-title-group">
           <span className="erd-table-icon">▦</span>
@@ -58,6 +58,21 @@ export const TableNode = memo(({ data }: NodeProps<TableCustomNode>) => {
         <span className="erd-col-count" title={`${table.columns.length} columns`}>
           {table.columns.length}
         </span>
+      </div>
+
+      {/* Migration Source bar (clickable link) */}
+      <div
+        className="erd-table-source-bar"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenSource(table.source);
+        }}
+        title={`Click to open migration:\n${table.source.file}:${table.source.line}`}
+      >
+        <span className="erd-source-icon">📄</span>
+        <span className="erd-source-name">{table.source.migration}.php</span>
+        <span className="erd-source-line">:{table.source.line}</span>
+        <span className="erd-source-arrow" title="Open file in editor">↗</span>
       </div>
 
       {/* Columns */}

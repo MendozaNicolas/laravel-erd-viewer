@@ -5,7 +5,7 @@ const elk = new ELK();
 
 export const TABLE_WIDTH = 280;
 export const ROW_HEIGHT = 28;
-export const HEADER_HEIGHT = 44;
+export const HEADER_HEIGHT = 68;
 
 export function calculateTableHeight(columnCount: number): number {
   return HEADER_HEIGHT + Math.max(1, columnCount) * ROW_HEIGHT + 16;

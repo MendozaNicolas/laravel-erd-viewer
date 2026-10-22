@@ -258,6 +258,58 @@ html, body, #root {
   border-radius: 10px;
 }
 
+/* Migration Source Bar */
+.erd-table-source-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  background-color: rgba(0, 0, 0, 0.22);
+  border-bottom: 1px solid var(--card-border);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  overflow: hidden;
+}
+
+.erd-table-source-bar:hover {
+  background-color: var(--hover-bg);
+  color: var(--accent);
+}
+
+.erd-source-icon {
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
+.erd-source-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.7rem;
+}
+
+.erd-source-line {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.7rem;
+}
+
+.erd-source-arrow {
+  margin-left: auto;
+  font-size: 0.75rem;
+  opacity: 0.4;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.erd-table-source-bar:hover .erd-source-arrow {
+  opacity: 1;
+  color: var(--accent);
+  transform: translate(1px, -1px);
+}
+
 /* Columns List */
 .erd-columns-list {
   display: flex;
