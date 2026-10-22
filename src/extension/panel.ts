@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { SchemaIR, SourceRef } from '../shared/model';
-import { SavedLayout, ToExtension, ToWebview } from '../shared/protocol';
+import { SourceRef } from '../shared/model';
+import { ToExtension, ToWebview } from '../shared/protocol';
 import { scanAndParseMigrations } from './scanner';
 import { clearSavedLayout, loadSavedLayout, saveLayout } from './layout-store';
 import { setupMigrationWatcher } from './watcher';
@@ -11,16 +11,22 @@ export class ErdWebviewPanel {
   private readonly _extensionUri: vscode.Uri;
   private readonly _workspaceRoot: vscode.Uri;
   private _disposables: vscode.Disposable[] = [];
+  private _isDisposed = false;
 
   public static async createOrShow(extensionUri: vscode.Uri) {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
 
-    if (ErdWebviewPanel.currentPanel) {
-      ErdWebviewPanel.currentPanel._panel.reveal(column);
-      await ErdWebviewPanel.currentPanel.refresh();
-      return;
+    if (ErdWebviewPanel.currentPanel && !ErdWebviewPanel.currentPanel._isDisposed) {
+      try {
+        ErdWebviewPanel.currentPanel._panel.reveal(column);
+        await ErdWebviewPanel.currentPanel.refresh();
+        return;
+      } catch {
+        // If panel was disposed abruptly, fall through to re-create
+        ErdWebviewPanel.currentPanel = undefined;
+      }
     }
 
     let workspaceRoot = extensionUri;
@@ -64,7 +70,9 @@ export class ErdWebviewPanel {
 
     this._panel.webview.onDidReceiveMessage(
       (message: ToExtension) => {
-        this._handleMessage(message);
+        this._handleMessage(message).catch((err) => {
+          console.warn('[laravel-erd] Webview message handling error:', err);
+        });
       },
       null,
       this._disposables
@@ -72,26 +80,40 @@ export class ErdWebviewPanel {
 
     // Watch migrations in workspace
     const watcher = setupMigrationWatcher(this._workspaceRoot, () => {
-      this.refresh();
+      if (!this._isDisposed) {
+        this.refresh().catch(() => {});
+      }
     });
     this._disposables.push(watcher);
   }
 
   public postMessage(message: ToWebview) {
-    this._panel.webview.postMessage(message);
+    if (this._isDisposed) return;
+    try {
+      this._panel.webview.postMessage(message);
+    } catch {
+      // Panel or webview was disposed
+    }
   }
 
   public async refresh() {
+    if (this._isDisposed) return;
     this.postMessage({ type: 'loading', value: true });
+
     try {
       const schema = await scanAndParseMigrations(this._workspaceRoot);
+      if (this._isDisposed) return;
+
       const layout = await loadSavedLayout(this._workspaceRoot);
+      if (this._isDisposed) return;
+
       this.postMessage({
         type: 'schema',
         schema,
         layout,
       });
     } catch (err: any) {
+      if (this._isDisposed) return;
       this.postMessage({
         type: 'error',
         message: err.message || 'Failed to scan migrations.',
@@ -100,11 +122,16 @@ export class ErdWebviewPanel {
   }
 
   public async resetLayout() {
+    if (this._isDisposed) return;
     await clearSavedLayout(this._workspaceRoot);
-    await this.refresh();
+    if (!this._isDisposed) {
+      await this.refresh();
+    }
   }
 
   private async _handleMessage(message: ToExtension) {
+    if (this._isDisposed) return;
+
     switch (message.type) {
       case 'ready': {
         await this.refresh();
@@ -142,13 +169,24 @@ export class ErdWebviewPanel {
   }
 
   public dispose() {
+    if (this._isDisposed) return;
+    this._isDisposed = true;
     ErdWebviewPanel.currentPanel = undefined;
-    this._panel.dispose();
+
+    try {
+      this._panel.dispose();
+    } catch {
+      // Ignore if already disposed by VS Code
+    }
 
     while (this._disposables.length) {
       const x = this._disposables.pop();
       if (x) {
-        x.dispose();
+        try {
+          x.dispose();
+        } catch {
+          // Ignore
+        }
       }
     }
   }
