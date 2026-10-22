@@ -1,6 +1,7 @@
 .vscode/**
 !dist/**
 !dist-webview/**
+node_modules/**
 src/**
 test/**
 tsconfig*.json

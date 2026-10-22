@@ -3,7 +3,7 @@
   "displayName": "Laravel ERD Viewer",
   "description": "Interactive Entity-Relationship Diagram (ERD) viewer for Laravel migrations",
   "version": "0.0.1",
-  "publisher": "laravel-erd",
+  "publisher": "nmendoza",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
@@ -27,8 +27,13 @@
     "workspaceContains:database/migrations"
   ],
   "main": "./dist/extension.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nicomaldonado/larader_viewer"
+  },
   "scripts": {
     "vscode:prepublish": "npm run build",
+    "package": "vsce package",
     "build": "npm run build:webview && npm run build:ext",
     "build:ext": "node esbuild.mjs",
     "build:ext:watch": "node esbuild.mjs --watch",
