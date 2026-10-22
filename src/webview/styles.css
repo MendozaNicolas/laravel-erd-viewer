@@ -194,12 +194,7 @@ html, body, #root {
 }
 
 .react-flow__attribution {
-  background: rgba(20, 20, 20, 0.6) !important;
-  border-radius: 4px;
-}
-
-.react-flow__attribution a {
-  color: var(--muted) !important;
+  display: none !important;
 }
 
 /* Table Node */

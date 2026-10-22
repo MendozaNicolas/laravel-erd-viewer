@@ -415,6 +415,7 @@ export const App: React.FC = () => {
           }}
           minZoom={0.1}
           maxZoom={2.5}
+          proOptions={{ hideAttribution: true }}
         >
           <Background color="var(--card-border, #333333)" gap={24} size={1} />
           <Controls position="bottom-right" />
