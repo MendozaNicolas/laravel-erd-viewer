@@ -10,4 +10,4 @@ vite.config.ts
 vitest.config.ts
 .gitignore
 .vscodeignore
-PLAN.md
+PLAN*.md
