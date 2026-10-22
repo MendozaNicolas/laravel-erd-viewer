@@ -1,0 +1,115 @@
+{
+  "name": "laravel-erd-viewer",
+  "displayName": "Laravel ERD Viewer",
+  "description": "Interactive Entity-Relationship Diagram (ERD) viewer for Laravel migrations",
+  "version": "0.0.1",
+  "publisher": "laravel-erd",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "laravel",
+    "erd",
+    "migrations",
+    "database",
+    "diagram",
+    "schema"
+  ],
+  "activationEvents": [
+    "onCommand:laravelErd.show",
+    "workspaceContains:artisan",
+    "workspaceContains:database/migrations"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "npm run build:webview && npm run build:ext",
+    "build:ext": "node esbuild.mjs",
+    "build:ext:watch": "node esbuild.mjs --watch",
+    "build:webview": "vite build",
+    "watch:webview": "vite build --watch",
+    "watch": "node -e \"console.log('Use tasks or separate terminals for watch:ext and watch:webview')\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit && tsc -p tsconfig.webview.json --noEmit"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "laravelErd.show",
+        "title": "Laravel ERD: Show Diagram",
+        "category": "Laravel ERD"
+      },
+      {
+        "command": "laravelErd.refresh",
+        "title": "Laravel ERD: Refresh Diagram",
+        "category": "Laravel ERD"
+      },
+      {
+        "command": "laravelErd.resetLayout",
+        "title": "Laravel ERD: Reset Layout",
+        "category": "Laravel ERD"
+      },
+      {
+        "command": "laravelErd.exportDbml",
+        "title": "Laravel ERD: Export Schema to DBML",
+        "category": "Laravel ERD"
+      },
+      {
+        "command": "laravelErd.exportMermaid",
+        "title": "Laravel ERD: Export Schema to Mermaid",
+        "category": "Laravel ERD"
+      }
+    ],
+    "configuration": {
+      "title": "Laravel ERD Viewer",
+      "properties": {
+        "laravelErd.migrationsPath": {
+          "type": "string",
+          "default": "database/migrations",
+          "description": "Workspace-relative path to Laravel migrations directory."
+        },
+        "laravelErd.inferRelations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Infer relationships based on column conventions (e.g. user_id -> users.id)."
+        },
+        "laravelErd.hideTables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "List of table names to hide from the diagram."
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/pluralize": "^0.0.33",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/vscode": "^1.85.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "@xyflow/react": "^12.4.2",
+    "elkjs": "^0.9.3",
+    "esbuild": "^0.25.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.7"
+  },
+  "dependencies": {
+    "@dbml/core": "^10.3.1",
+    "php-parser": "^3.7.0",
+    "pluralize": "^8.0.0"
+  }
+}

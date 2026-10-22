@@ -1,0 +1,12 @@
+.vscode/**
+!dist/**
+!dist-webview/**
+src/**
+test/**
+tsconfig*.json
+esbuild.mjs
+vite.config.ts
+vitest.config.ts
+.gitignore
+.vscodeignore
+PLAN.md
